@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<title>Hoje</title>
+<style>
+  :root {
+    --bg: #F6F2EC; --card: #FFFDF9; --ink: #2B2621; --muted: #6F665D; --line: #E4DCD1;
+    --accent: #7E57C2; --ok: #2E7D32; --warn: #E0752B; --danger: #C62828; --chip: #EEE7DD;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1C1A17; --card: #26231F; --ink: #F1ECE4; --muted: #B3A99D; --line: #3A352F;
+      --accent: #B39DDB; --chip: #332E28; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .faixa { height: 6px; background: var(--accent); }
+  header { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 16px 6px; }
+  header h1 { font-size: 20px; margin: 0; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+  .badge.sim { background: #FFF1E0; color: #8A4B00; }
+  main { padding: 0 16px 96px; max-width: 640px; margin: 0 auto; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+  section h2 { font-size: 15px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+  .agora-titulo { font-size: 18px; font-weight: 600; }
+  .barra { height: 8px; background: var(--chip); border-radius: 99px; overflow: hidden; margin: 8px 0 4px; }
+  .barra > div { height: 100%; background: var(--accent); width: 0; }
+  .alerta { border-left: 4px solid var(--warn); }
+  .card-linha { padding: 6px 0; border-top: 1px solid var(--line); }
+  .card-linha:first-of-type { border-top: 0; }
+  .tipo { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .ev { display: grid; grid-template-columns: 52px 10px 1fr; gap: 8px; align-items: start; padding: 6px 0; }
+  .ev .hora { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+  .ev .ponto { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+  .ev.passado { opacity: .45; }
+  .ev.sug .t { font-style: italic; }
+  .sug-item { border-top: 1px solid var(--line); padding: 10px 0; }
+  .sug-item:first-of-type { border-top: 0; }
+  .linha-botoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  button, select { font: inherit; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
+    padding: 10px 14px; min-height: 44px; }
+  button.primario { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; }
+  .vazio { color: var(--muted); }
+  #aviso { position: fixed; left: 16px; right: 16px; bottom: 76px; max-width: 608px; margin: 0 auto; background: var(--ink); color: var(--bg);
+    padding: 12px 14px; border-radius: 12px; display: none; }
+  nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; background: var(--card); border-top: 1px solid var(--line); }
+  nav button { flex: 1; border: 0; border-radius: 0; background: transparent; min-height: 56px; color: var(--muted); }
+  nav button.ativo { color: var(--accent); font-weight: 600; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="faixa"></div>
+<header>
+  <div><h1 id="titulo">Hoje</h1><div class="sub" id="data"></div></div>
+  <span class="badge" id="modo"></span>
+</header>
+<main id="conteudo"><p class="vazio">Carregando…</p></main>
+<div id="aviso" role="status"></div>
+<nav>
+  <button class="ativo" type="button">Hoje</button>
+  <button type="button" disabled>Semana</button>
+  <button type="button" disabled>Registrar</button>
+  <button type="button" id="btnAtualizar">Atualizar</button>
+</nav>
+<script>
+  // Toda informação de fora (eventos, cards, sugestões) entra só como texto (textContent).
+  var TZ = 'America/Sao_Paulo';
+  var CORES = { '1': '#7986CB', '2': '#33B679', '3': '#8E24AA', '4': '#E67C73', '5': '#F6BF26', '6': '#F4511E',
+    '7': '#039BE5', '8': '#616161', '9': '#3F51B5', '10': '#0B8043', '11': '#D50000' };
+  var COR_AGENDA = { agenda_sugestoes: '#C9C1B4', agenda_social: '#D81B60', agenda_projetos: '#4A6FB5',
+    agenda_feriado: '#8D6E63', agenda_visualizacao: '#616161', agenda_faculdade: '#0B8043', agenda_carreira: '#F6BF26', agenda_bemestar: '#8E24AA' };
+  var ROTULO = { primeiro_passo: 'Primeiro passo', risco: 'Risco de hoje', levar: 'Levar / pedir', prazo: 'Prazo',
+    urgente: 'Urgente', radar: 'Radar', vai_abrir: 'Vai abrir', prova: 'Prova chegando', pergunta: 'Pergunta' };
+  var painel = null, ocupado = false;
+
+  function el(tag, cls, texto) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (texto !== undefined && texto !== null) e.textContent = String(texto);
+    return e;
+  }
+  function hora(iso) {
+    return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
+  }
+  function diaHora(iso) {
+    return new Date(iso).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: TZ });
+  }
+  function avisar(msg) {
+    var a = document.getElementById('aviso');
+    a.textContent = msg; a.style.display = 'block';
+    clearTimeout(avisar.t); avisar.t = setTimeout(function () { a.style.display = 'none'; }, 3500);
+  }
+  function chamar(fn, args, ok) {
+    if (ocupado) return;
+    ocupado = true;
+    var runner = google.script.run
+      .withSuccessHandler(function (r) { ocupado = false; ok(r); })
+      .withFailureHandler(function (e) { ocupado = false; var m = e && e.message ? String(e.message) : ''; avisar(m.length < 120 ? 'Não deu certo: ' + m : 'Não deu certo. Atualize e tente de novo.'); });
+    runner[fn].apply(runner, args || []);
+  }
+
+  function carregar() {
+    chamar('getPainel', [], function (p) { painel = p; render(); });
+  }
+
+  function render() {
+    var p = painel, raiz = document.getElementById('conteudo');
+    raiz.replaceChildren();
+    document.getElementById('data').textContent = new Date(p.agoraIso).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', timeZone: TZ });
+    var m = document.getElementById('modo');
+    m.textContent = p.modo === 'real' ? p.versao : 'simulação';
+    m.className = 'badge' + (p.modo === 'real' ? '' : ' sim');
+
+    raiz.appendChild(secaoAgora(p));
+    if (p.avisos && p.avisos.length) {
+      var av = el('section', 'alerta');
+      av.appendChild(el('h2', null, 'Atenção'));
+      p.avisos.forEach(function (t) { av.appendChild(el('div', null, t)); });
+      raiz.appendChild(av);
+    }
+    if (p.carga && p.carga.cheio) {
+      var al = el('section', 'alerta');
+      al.appendChild(el('h2', null, 'Dia cheio'));
+      al.appendChild(el('div', null, p.carga.ocupadoH + ' h de compromissos e ' + p.carga.sugestoesH + ' h de sugestões numa janela de ' + p.carga.janelaH + ' h. Vale recusar ou mover alguma sugestão.'));
+      raiz.appendChild(al);
+    }
+    if (p.cards.length) raiz.appendChild(secaoCards(p.cards));
+    raiz.appendChild(secaoSugestoes(p));
+    raiz.appendChild(secaoDia(p));
+  }
+
+  function secaoAgora(p) {
+    var s = el('section'); s.appendChild(el('h2', null, 'Agora e próximo'));
+    var agora = Date.now();
+    var comHora = p.eventos.filter(function (e) { return !e.diaInteiro && !e.livre; });
+    var atual = comHora.filter(function (e) { return new Date(e.inicio) <= agora && new Date(e.fim) > agora; })[0];
+    var prox = comHora.filter(function (e) { return new Date(e.inicio) > agora; })[0];
+    if (atual) {
+      s.appendChild(el('div', 'agora-titulo', atual.titulo));
+      var tot = new Date(atual.fim) - new Date(atual.inicio), feito = agora - new Date(atual.inicio);
+      var b = el('div', 'barra'), f = el('div'); f.style.width = Math.min(100, Math.round(feito / tot * 100)) + '%'; b.appendChild(f); s.appendChild(b);
+      s.appendChild(el('div', 'sub', 'Faltam ' + Math.max(0, Math.round((new Date(atual.fim) - agora) / 60000)) + ' min (até ' + hora(atual.fim) + ')'));
+    } else {
+      s.appendChild(el('div', 'agora-titulo', 'Nada marcado agora'));
+    }
+    if (prox) {
+      var mins = Math.round((new Date(prox.inicio) - agora) / 60000);
+      var quando = mins >= 60 ? Math.floor(mins / 60) + ' h ' + (mins % 60) + ' min' : mins + ' min';
+      s.appendChild(el('div', 'sub', 'Próximo: ' + prox.titulo + ' às ' + hora(prox.inicio) + ' (em ' + quando + ')'));
+    }
+    return s;
+  }
+
+  function secaoCards(cards) {
+    var s = el('section'); s.appendChild(el('h2', null, 'Do Resumo da manhã'));
+    cards.forEach(function (c) {
+      var d = el('div', 'card-linha');
+      d.appendChild(el('div', 'tipo', ROTULO[c.tipo] || c.tipo));
+      d.appendChild(el('div', null, c.texto));
+      if (c.detalhe) d.appendChild(el('div', 'sub', c.detalhe));
+      if (c.link) { var a = el('a', null, 'abrir em ' + c.dominio); a.href = c.link; a.target = '_blank'; a.rel = 'noopener noreferrer'; d.appendChild(a); }
+      s.appendChild(d);
+    });
+    return s;
+  }
+
+  function secaoSugestoes(p) {
+    var s = el('section'); s.appendChild(el('h2', null, 'Sugestões para validar (' + p.sugestoes.length + ')'));
+    if (!p.sugestoes.length) { s.appendChild(el('div', 'vazio', 'Nenhuma sugestão esperando.')); return s; }
+    p.sugestoes.forEach(function (g) {
+      var it = el('div', 'sug-item');
+      it.appendChild(el('div', null, g.titulo));
+      it.appendChild(el('div', 'sub', g.diaInteiro ? 'dia inteiro' : diaHora(g.inicio) + ' a ' + hora(g.fim)));
+      var linha = el('div', 'linha-botoes');
+      var sel = el('select'); sel.setAttribute('aria-label', 'Área');
+      p.areas.forEach(function (a) { var o = el('option', null, a); o.value = a; if (a === g.area) o.selected = true; sel.appendChild(o); });
+      if (!g.area) { var o0 = el('option', null, 'Escolha a área'); o0.value = ''; o0.selected = true; sel.insertBefore(o0, sel.firstChild); }
+      var bAc = el('button', 'primario', 'Aceitar'); bAc.type = 'button';
+      bAc.onclick = function () {
+        if (!sel.value) { avisar('Escolha a área antes.'); return; }
+        chamar('aceitarSugestao', [g.id, g.versao, sel.value], depois);
+      };
+      var bRe = el('button', null, 'Recusar'); bRe.type = 'button';
+      bRe.onclick = function () { mostrarMotivos(it, g); };
+      var bMo = el('button', null, 'Mover'); bMo.type = 'button';
+      bMo.onclick = function () { chamar('horariosLivres', [g.id, g.versao], function (lista) { mostrarHorarios(it, g, lista); }); };
+      linha.appendChild(sel); linha.appendChild(bAc); linha.appendChild(bRe);
+      if (!g.diaInteiro) linha.appendChild(bMo);
+      it.appendChild(linha);
+      s.appendChild(it);
+    });
+    return s;
+  }
+
+  function mostrarMotivos(it, g) {
+    var velho = it.querySelector('.extra'); if (velho) velho.remove();
+    var box = el('div', 'linha-botoes extra');
+    painel.motivos.forEach(function (m) {
+      var b = el('button', null, m); b.type = 'button';
+      b.onclick = function () {
+        // confirmação em dois toques: o primeiro só arma o botão
+        if (b.dataset.armado !== '1') { b.dataset.armado = '1'; b.textContent = 'Confirmar: ' + m; return; }
+        chamar('recusarSugestao', [g.id, g.versao, m], depois);
+      };
+      box.appendChild(b);
+    });
+    it.appendChild(box);
+  }
+
+  function mostrarHorarios(it, g, lista) {
+    var velho = it.querySelector('.extra'); if (velho) velho.remove();
+    var box = el('div', 'linha-botoes extra');
+    if (!lista.length) box.appendChild(el('div', 'vazio', 'Sem horário livre nos próximos 7 dias.'));
+    lista.forEach(function (iso) {
+      var b = el('button', null, diaHora(iso)); b.type = 'button';
+      b.onclick = function () { chamar('moverSugestao', [g.id, g.versao, iso], depois); };
+      box.appendChild(b);
+    });
+    it.appendChild(box);
+  }
+
+  function depois(r) { avisar(r.msg); carregar(); }
+
+  function secaoDia(p) {
+    var s = el('section'); s.appendChild(el('h2', null, 'O dia'));
+    if (!p.eventos.length) { s.appendChild(el('div', 'vazio', 'Agenda vazia hoje.')); return s; }
+    var agora = Date.now();
+    p.eventos.forEach(function (e) {
+      var r = el('div', 'ev' + (!e.diaInteiro && new Date(e.fim) < agora ? ' passado' : '') + (e.sugestao ? ' sug' : ''));
+      r.appendChild(el('div', 'hora', e.diaInteiro ? 'dia' : hora(e.inicio)));
+      var pt = el('div', 'ponto'); pt.style.background = CORES[e.colorId] || COR_AGENDA[e.agenda] || '#9E9E9E'; r.appendChild(pt);
+      var t = el('div', 't'); t.appendChild(el('div', null, e.titulo));
+      t.appendChild(el('div', 'sub', e.agendaNome + (e.sugestao ? ' · sugestão' : '')));
+      r.appendChild(t);
+      s.appendChild(r);
+    });
+    return s;
+  }
+
+  document.getElementById('btnAtualizar').onclick = carregar;
+  // a cada minuto, atualiza só o "Agora e próximo" (não fecha o que estiver aberto)
+  setInterval(function () {
+    if (!painel) return;
+    var raiz = document.getElementById('conteudo');
+    if (raiz.firstChild) raiz.replaceChild(secaoAgora(painel), raiz.firstChild);
+  }, 60000);
+  carregar();
+</script>
+</body>
+</html>

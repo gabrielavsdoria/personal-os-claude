@@ -1,0 +1,9 @@
+empresa,tipo,prazo,fit_longo_prazo,aprendizado,etapa_atual,efetivacao,prestigio,bolsa_beneficios,esforco,local,inicio
+Empresa A (bens de consumo),etapa aberta,2026-11-03,5,5,4,5,5,4,3,4,5
+Empresa B (energia),etapa aberta,2026-11-06,4,4,3,4,4,4,4,3,5
+Empresa C (logística),etapa aberta,,2,2,2,2,2,3,1,2,4
+Empresa D (consultoria),inscricao nova,2026-11-10,4,5,1,3,5,4,4,4,5
+Empresa E (varejo),inscricao nova,2026-11-17,4,4,1,4,4,,4,3,5
+Empresa F (tecnologia),inscricao nova,2026-11-12,3,5,1,4,4,5,3,,5
+Empresa G (mineração),inscricao nova,2026-11-20,3,4,1,4,3,4,4,2,5
+Empresa H (startup),inscricao nova,2026-11-08,2,3,1,2,2,2,5,5,3
